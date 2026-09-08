@@ -1,0 +1,315 @@
+# SCMDB Community Translations
+
+Community-maintained translations for [SCMDB](https://scmdb.dev) — the Star Citizen Mission & Data Browser.
+
+SCMDB displays all data in English by default. This repo provides the tools for community translation teams to create their own language files that users can load in the browser.
+
+## For Translation Teams
+
+### What you need
+
+1. **Python 3.10+** (no external dependencies)
+2. **`build_lang_template.py`** (this repo)
+3. **`lang-template-*.json`** (this repo, updated each patch by SCMDB)
+4. **Your community `global.ini`** (the Star Citizen translation file your team maintains)
+
+### How to build a translation
+
+```bash
+# PTU (default)
+python build_lang_template.py --translate path/to/your_global.ini
+
+# LIVE (when a live template is available)
+python build_lang_template.py -p live --translate path/to/your_global.ini
+```
+
+The `-p` flag selects which template to use when multiple are present (e.g. `lang-template-*-ptu.*.json` vs `lang-template-*-live.*.json`). Default is `ptu`.
+
+This produces a `lang-your_global-4.7.0-ptu.11494258.json` file with a coverage report:
+
+```
+=== Result ===
+  File:          lang-your_global-4.7.0-ptu.11494258.json
+  Total:         3340
+  Translated:    3250
+  Missing:       3
+  Mismatch:      26 (token placeholders in foreign text)
+  No loc key:    80 (kept as-is)
+  UI sidecar:    12 (scmdb_ui_* from community sidecar)
+```
+
+Missing keys automatically fall back to English text.
+
+#### Token substitution
+
+The tool automatically resolves token placeholders in translated text. For example, if a mission title contains `[RANK]`, the tool looks up the translated rank name (e.g. "Master" -> "Мастер") in your `global.ini` and inserts it. This reduces manual post-processing significantly.
+
+#### Output filename
+
+The output filename is derived from your `global.ini` filename. To control the language code in the output, name your INI file accordingly:
+
+```bash
+# Input: global_ru.ini -> Output: lang-global_ru-4.7.0-ptu.11494258.json
+# Input: german_global.ini -> Output: lang-german_global-4.7.0-ptu.11494258.json
+```
+
+### Translating SCMDB's own UI strings
+
+Almost everything you translate comes from CIG's `global.ini`. One set of
+strings does not: SCMDB's own interface text — mission badges, Fabricator
+panel labels, tooltips. These live in the template under the `scmdb_ui_*`
+namespace, and no `global.ini` will ever contain them, because they are not
+game data.
+
+> **Availability:** the `scmdb_ui_*` keys ride in the LIVE template as of
+> `4.10.0-live.12545750`. The PTU template picks them up with its next rebuild.
+> Until then use `-p live`, otherwise the sidecar has nothing to match against.
+
+To translate them, place a **sidecar file** next to your `global.ini`:
+
+```
+translations/
+  global_zh-CN.ini
+  scmdb_ui_zh-CN.json     <- picked up automatically
+```
+
+No extra flag needed — the build finds it by name:
+
+```bash
+python build_lang_template.py --translate translations/global_zh-CN.ini
+```
+
+```
+  UI sidecar: scmdb_ui_zh-CN.json (12 entries)
+```
+
+**Naming.** `scmdb_ui_<lang>.<ext>`, where `<lang>` matches your INI. For
+`global_zh-CN.ini`, both `scmdb_ui_zh-CN.json` and `scmdb_ui_global_zh-CN.json`
+are recognised; for `chinese_global.ini` it is `scmdb_ui_chinese.json`. A
+sidecar whose name does not match is never picked up silently — the build
+prints a hint instead. To use a file with a different name or location, point
+at it explicitly:
+
+```bash
+python build_lang_template.py --translate global_zh-CN.ini --translate-ui my_ui_strings.json
+```
+
+#### Sidecar format
+
+JSON is preferred — it round-trips placeholder tokens and special characters
+without surprises. A flat key -> translation map is all it takes:
+
+```json
+{
+  "scmdb_ui_tag_legal": "合法",
+  "scmdb_ui_tag_new_tt": "新增于补丁 {patch}",
+  "scmdb_ui_tag_wip": "开发中"
+}
+```
+
+A `keys` wrapper is accepted as well, so you can keep metadata next to the
+strings, and a value may be given as `{"en": ..., "tr": ...}` — the `tr` side
+is used:
+
+```json
+{
+  "lang": "zh-CN",
+  "keys": {
+    "scmdb_ui_tag_legal": "合法"
+  }
+}
+```
+
+An `.ini` sidecar (same `key=value` format as `global.ini`) works too:
+
+```ini
+scmdb_ui_tag_legal=合法
+scmdb_ui_tag_new_tt=新增于补丁 {patch}
+```
+
+Two rules:
+
+- **`scmdb_ui_*` keys only.** Anything else in the file is ignored with a
+  warning. Game data belongs in your `global.ini`, not here — a sidecar
+  answering CIG keys would report flawless coverage while shipping English.
+- **UTF-8.** Both formats — which covers every script, Chinese and Japanese
+  included. What is *not* accepted is a legacy codepage: what Windows editors
+  call "ANSI" is cp1252 in Western Europe, GBK in China, Shift-JIS in Japan.
+  Such a file is rejected with an error rather than read, because decoding it
+  as anything else corrupts the text silently. In VS Code the setting is
+  *Save with Encoding → UTF-8*; in Notepad it is the *Encoding* dropdown of
+  the Save-As dialog.
+
+Include only the keys you have translated. Anything you leave out — or leave
+empty — keeps its English text. The full list of available keys is in the
+template: every entry under `keys` whose name starts with `scmdb_ui_`.
+
+#### Placeholders
+
+Some of these strings carry placeholder tokens in curly braces: `{patch}`,
+`{n}`, `{count}`, `{chance}`, `{material}`, `{pool}`, `{systems}`. SCMDB
+substitutes them with the real value when the page renders.
+
+Keep the token spelled exactly as it is. You are free to move it anywhere in
+the sentence:
+
+| Key | English | zh-CN |
+|-----|---------|-------|
+| `scmdb_ui_tag_new_tt` | `Added in patch {patch}` | `新增于补丁 {patch}` |
+| `scmdb_ui_tag_waves_tt` | `{n} waves` | `{n} 波` |
+
+Renaming or dropping a token breaks the substitution — the string then renders
+with a literal `{patch}` in it.
+
+#### In the report
+
+Sidecar entries count as **Translated**, and get their own summary line:
+
+```
+  UI sidecar:    12 (scmdb_ui_* from community sidecar)
+```
+
+`scmdb_ui_*` keys you have not translated do **not** show up under *Missing* —
+they were never in `global.ini` to begin with. They are listed separately:
+
+```
+=== SCMDB UI strings without translation (47) ===
+  scmdb_ui_fab_preset_base
+  ...
+```
+
+Entries in your sidecar that had no effect are called out too, so a typo does
+not cost you an afternoon:
+
+```
+=== UI sidecar entries that did not apply (2) ===
+  Not present in this template (2):
+    scmdb_ui_tag_ilegal
+    scmdb_ui_tag_retired_key
+  -> typo in the key, a retired key, or a template that
+     predates the string. Nothing was written for these.
+```
+
+If CIG ever ships a key with the same name, CIG's `global.ini` wins — the
+sidecar is only consulted where the INI has no answer, and the shadowed
+sidecar entry is listed under *Answered by your global.ini instead*.
+
+### How to publish your translation
+
+1. Host the generated `lang-*.json` file somewhere publicly accessible:
+   - **GitHub** (recommended): Push to your own repo, use the Raw URL
+   - **Any web server** with CORS enabled (`Access-Control-Allow-Origin: *`)
+   - **GitHub Gist**: Upload and use the Raw URL
+
+2. Share the direct URL with your community:
+   ```
+   https://raw.githubusercontent.com/your-team/scmdb-translations/main/lang-de-4.7.0-ptu.11494258.json
+   ```
+
+3. When a new patch drops:
+   - Pull the updated `lang-template-*.json` and `build_lang_template.py` from this repo
+   - Re-run `python build_lang_template.py --translate path/to/your_global.ini`
+   - Update your hosted file
+
+### File format
+
+The output JSON contains English + translated text for each key:
+
+```json
+{
+  "version": "4.7.0-ptu.11494258",
+  "sourceLanguage": "en",
+  "targetLanguage": "global_ru",
+  "keyCount": 3340,
+  "keys": {
+    "Adagio_BasicSalvage_Title_01": {
+      "en": "Claim #[CLAIM]: [SHIP] Salvage Rights",
+      "tr": "ПРАВО НА УТИЛИЗАЦИЮ #[CLAIM]: [SHIP]"
+    },
+    "items_commodities_gold_ore": {
+      "en": "Gold (Ore)",
+      "tr": "Золото (Руда)"
+    }
+  }
+}
+```
+
+## For Users
+
+### Quick start (no account needed)
+
+Add `?lang=URL` to any SCMDB page:
+
+```
+https://scmdb.dev?lang=https://raw.githubusercontent.com/team-de/scmdb-lang/main/lang-de.json
+```
+
+The language preference is saved in your browser. You only need to do this once.
+
+### With an SCMDB account
+
+Go to Settings and paste the language file URL. The setting syncs across devices.
+
+### How to remove
+
+- **Without account**: Clear browser data, or visit `scmdb.dev?lang=clear`
+- **With account**: Remove the URL from Settings
+
+## Available Languages
+
+Translation teams can be listed here once they publish their files:
+
+| Language | Team | URL | Coverage |
+|----------|------|-----|----------|
+| *Your language here* | — | — | — |
+
+If your team has published a translation, open an issue to get listed.
+
+## Key Statistics (~4,500 keys per version)
+
+| Category | Count | Notes |
+|----------|-------|-------|
+| Mission Titles | ~685 | Contract/mission names |
+| Descriptions | ~724 | Mission briefing texts |
+| Locations | ~626 | Planets, moons, stations |
+| Ships | ~144 | Ship names |
+| Items | ~1,033 | Weapons, armor, equipment |
+| Factions | ~35 | In-game organizations |
+| Reputation | ~55 | Rank and scope names |
+| Mining | ~38 | Mineable elements |
+| SCMDB UI strings | 59 | `scmdb_ui_*` — see the sidecar section above |
+
+## What is translated?
+
+Translations cover **in-game data only** — mission titles, descriptions, location names, ship names, item names, faction names, and other strings sourced from Star Citizen's `global.ini`.
+
+A defined subset of SCMDB's **own** interface text is translatable as well — mission badges, Fabricator panel labels and their tooltips — via the `scmdb_ui_*` sidecar described above. These are opt-in: without a sidecar they stay English, and nothing breaks.
+
+The remaining website chrome (navigation, buttons, column headers, filters, settings) stays English by design — localizing it would require layout adjustments, pluralization rules, and formatting changes that go far beyond simple string replacement.
+
+## FAQ
+
+**Q: Do I need a Star Citizen account?**
+A: No. You just need Python and a `global.ini` file (your translation team provides this).
+
+**Q: Why are some keys missing from my translation?**
+A: CIG adds new mission texts each patch. If your `global.ini` doesn't have them yet, English is used as fallback.
+
+**Q: What are "Mismatch" entries?**
+A: CIG sometimes has different English text in foreign language `global.ini` files compared to the English version. These mismatches are reported but the translated text is still included.
+
+**Q: What are "Substituted" entries?**
+A: Mission tokens like `[RANK]` or `[CARGO_GRADE]` are automatically replaced with the translated value from your `global.ini`. For example, `[RANK]` becomes "Мастер" in Russian.
+
+**Q: The report lists `scmdb_ui_*` keys as untranslated. Where do I get them from?**
+A: Not from `global.ini` — those are SCMDB's own interface strings. Put a `scmdb_ui_<lang>.json` sidecar next to your INI, see "Translating SCMDB's own UI strings" above.
+
+**Q: Can I manually edit the output JSON?**
+A: Yes. You can fix or improve any translation directly in the JSON file after generation.
+
+**Q: How often does the template update?**
+A: With every Star Citizen patch that changes mission data. Check this repo for new `lang-template-*.json` files.
+
+## License
+
+The translation tooling is provided as-is. Star Citizen game data belongs to Cloud Imperium Games.

@@ -1,0 +1,28 @@
+{
+  "repository": "https://github.com/KrovaxCode/SCMDB_LANG",
+  "upstreamCommit": "4aa11dc2cdf7ba4a50ec0eb96ce2e819c71cd455",
+  "syncedAt": "2026-09-09T00:00:00Z",
+  "redistributionPermissionConfirmed": true,
+  "files": [
+    {
+      "path": "UPSTREAM_README.md",
+      "byteLength": 11840,
+      "sha256": "663656c9549b398ebd0685afa2bf815d05c0ccf5e05cfc9979d06ff39c7394cf"
+    },
+    {
+      "path": "build_lang_template.py",
+      "byteLength": 49149,
+      "sha256": "e2e1351cbaf37d6f328d6daf715410b9f973d3f986d8108ca8df6dbc577ada09"
+    },
+    {
+      "path": "lang-template-4.10.0-live.12568521.json",
+      "byteLength": 1831756,
+      "sha256": "04a34daaae83d26d8598135769d36704507204e56374152d595a4e24db3fbae6"
+    },
+    {
+      "path": "lang-template-4.10.1-ptu.12578875.json",
+      "byteLength": 1833059,
+      "sha256": "b8bfe6d5c766bb3b19209b1bc3433a79e5168ed5cb6394b0ce18e3989c4e9155"
+    }
+  ]
+}

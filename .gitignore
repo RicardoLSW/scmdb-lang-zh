@@ -1,0 +1,5 @@
+*.ini
+__pycache__/
+*.pyc
+upstream/SCMDB_LANG/lang-*.json
+dist/**/*.tmp
