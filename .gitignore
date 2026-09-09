@@ -4,3 +4,4 @@ __pycache__/
 upstream/SCMDB_LANG/lang-*.json
 !upstream/SCMDB_LANG/lang-template-*.json
 dist/**/*.tmp
+build/
