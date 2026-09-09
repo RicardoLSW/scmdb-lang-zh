@@ -27,6 +27,14 @@ class ReleaseToolTests(unittest.TestCase):
         with self.assertRaisesRegex(release.ReleaseError, "duplicate JSON key"):
             release.load_json(path)
 
+    def test_load_json_reads_one_immutable_byte_snapshot(self):
+        path = self.root / "snapshot.json"
+        with mock.patch.object(
+            Path, "read_bytes", autospec=True, return_value=b'{"version": 1}'
+        ) as read_bytes:
+            self.assertEqual(release.load_json(path), {"version": 1})
+        read_bytes.assert_called_once_with(path)
+
     def test_template_diff_carries_only_unchanged_translations(self):
         old = self.write_template("1-live.1", {
             "same": "Same", "changed": "Before", "removed": "Removed"
@@ -194,6 +202,80 @@ class ReleaseToolTests(unittest.TestCase):
         for unsafe in ("../live.json", "nested/live.json", "C:\\live.json"):
             with self.assertRaises(release.ReleaseError):
                 release._safe_output_name(unsafe, "alias")
+
+    def test_checked_in_live_release_matches_current_output_contract(self):
+        config = release.load_json(release.REPO_ROOT / "release" / "live.json")
+        manifest = release.load_json(release.REPO_ROOT / "dist" / "manifest.json")
+        self.assertEqual(manifest["schemaVersion"], 2)
+        self.assertEqual(manifest["channel"], config["channel"])
+        self.assertEqual(manifest["status"], "candidate")
+        self.assertEqual(
+            manifest["blocked"],
+            release.load_blocked_releases(config, release.REPO_ROOT),
+        )
+
+        artifacts = {item["variant"]: item for item in manifest["artifacts"]}
+        for item in [*manifest["artifacts"], *manifest["aliases"]]:
+            info = release.file_info(release.REPO_ROOT / item["path"])
+            self.assertEqual(info["sha256"], item["sha256"])
+            self.assertEqual(info["byteLength"], item["byteLength"])
+
+        for variant, source in config["sources"].items():
+            report = release.load_json(
+                release.REPO_ROOT / "reports" / config["build"] / f"{variant}.json"
+            )
+            self.assertEqual(report["schemaVersion"], 2)
+            self.assertEqual(report["build"], config["build"])
+            self.assertEqual(report["source"], source)
+            self.assertEqual(report["gates"], {"status": "passed", "failures": []})
+            self.assertEqual(report["artifact"], artifacts[variant])
+            self.assertEqual(report["artifact"]["variant"], variant)
+            self.assertEqual(report["uiSidecar"]["path"], config["uiSidecar"])
+
+    def test_blocked_release_reports_are_hash_pinned(self):
+        report_path = self.root / "reports" / "ptu.json"
+        report = {
+            "schemaVersion": 1,
+            "status": "blocked",
+            "variant": "ptu",
+            "requestedBuild": "fixture-ptu.1",
+        }
+        release.write_json(report_path, report)
+        config = {
+            "variants": {"full": {}},
+            "blocked": [{
+                "variant": "ptu",
+                "report": "reports/ptu.json",
+                "sha256": release.file_info(report_path)["sha256"],
+            }],
+        }
+        self.assertEqual(
+            release.load_blocked_releases(config, self.root),
+            [{
+                "variant": "ptu",
+                "build": "fixture-ptu.1",
+                "report": "reports/ptu.json",
+                "reportSchemaVersion": 1,
+                "sha256": release.file_info(report_path)["sha256"],
+            }],
+        )
+        report["reason"] = "changed"
+        release.write_json(report_path, report)
+        with self.assertRaisesRegex(release.ReleaseError, "blocked report SHA-256 mismatch"):
+            release.load_blocked_releases(config, self.root)
+
+        for unsafe in (
+            "reports/ptu.json.",
+            "reports/ptu.json ",
+            "reports\\ptu.json",
+            "reports/../ptu.json",
+            "reports/CON",
+            "reports/com1.json",
+            "reports/NUL.txt",
+        ):
+            config["blocked"][0]["report"] = unsafe
+            with self.assertRaisesRegex(release.ReleaseError, "canonical POSIX path"):
+                release.load_blocked_releases(config, self.root)
 
     def test_raw_check_requires_cors_and_matching_hash(self):
         body = b"candidate"

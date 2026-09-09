@@ -27,6 +27,13 @@
       "aliases": ["live-half.json"]
     }
   },
+  "blocked": [
+    {
+      "variant": "ptu",
+      "report": "reports/ptu-4.10.1-ptu.12578875.json",
+      "sha256": "c1dc2d09db8e1818317c09c6f40b41de4c5e7915601642ae284c52233de6d0e3"
+    }
+  ],
   "sources": {
     "full": {
       "url": "https://ini.42kit.com/full/global.ini",
