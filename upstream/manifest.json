@@ -6,23 +6,23 @@
   "files": [
     {
       "path": "UPSTREAM_README.md",
-      "byteLength": 11840,
-      "sha256": "663656c9549b398ebd0685afa2bf815d05c0ccf5e05cfc9979d06ff39c7394cf"
+      "byteLength": 11525,
+      "sha256": "512f360c39c04c7f957c7cd5029631e99a43674ff8f4213d1395525cc25afd23"
     },
     {
       "path": "build_lang_template.py",
-      "byteLength": 49149,
-      "sha256": "e2e1351cbaf37d6f328d6daf715410b9f973d3f986d8108ca8df6dbc577ada09"
+      "byteLength": 47998,
+      "sha256": "c9698894a120e381727b17cb611cfd6dce50342f820a58bfdd9a033b53d67cdd"
     },
     {
       "path": "lang-template-4.10.0-live.12568521.json",
-      "byteLength": 1831756,
-      "sha256": "04a34daaae83d26d8598135769d36704507204e56374152d595a4e24db3fbae6"
+      "byteLength": 1819995,
+      "sha256": "1b05502e1ac91b23d2e292c6e6f3b114d3127cabd196153ed6447b3972b8baa8"
     },
     {
       "path": "lang-template-4.10.1-ptu.12578875.json",
-      "byteLength": 1833059,
-      "sha256": "b8bfe6d5c766bb3b19209b1bc3433a79e5168ed5cb6394b0ce18e3989c4e9155"
+      "byteLength": 1821270,
+      "sha256": "e533e47b975ed3289172695b3c56174efa0f3701fc7c271cd44ff45b684a82b9"
     }
   ]
 }

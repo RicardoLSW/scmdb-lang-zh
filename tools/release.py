@@ -180,6 +180,18 @@ def _git_output(source_dir: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _git_bytes(source_dir: Path, *args: str) -> bytes:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(source_dir), *args],
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ReleaseError(f"cannot read upstream Git blob: {' '.join(args)}") from exc
+    return completed.stdout
+
+
 def _normalize_repository_url(url: str) -> str:
     return url.removesuffix(".git").rstrip("/")
 
@@ -203,15 +215,15 @@ def sync_upstream(source_dir: Path, commit: str, synced_at: str, repo_root: Path
     if _git_output(source_dir, "status", "--porcelain", "--untracked-files=all"):
         raise ReleaseError("source checkout must be clean before syncing")
 
-    selected: list[tuple[str, Path]] = []
+    selected: list[tuple[str, str]] = []
     readme = source_dir / "README.md"
     builder = source_dir / "build_lang_template.py"
     if not readme.is_file() or not builder.is_file():
         raise ReleaseError("source must contain README.md and build_lang_template.py")
-    selected.extend((("UPSTREAM_README.md", readme), ("build_lang_template.py", builder)))
+    selected.extend((("UPSTREAM_README.md", readme.name), (builder.name, builder.name)))
     for path in sorted(source_dir.glob("lang-template-*.json")):
         validate_template(path)
-        selected.append((path.name, path))
+        selected.append((path.name, path.name))
     if len(selected) == 2:
         raise ReleaseError("source contains no valid lang-template-*.json")
 
@@ -224,9 +236,11 @@ def sync_upstream(source_dir: Path, commit: str, synced_at: str, repo_root: Path
         staged_manifest = staged_upstream / "manifest.json"
         staged_dir.mkdir(parents=True)
         entries = []
-        for target_name, source_path in selected:
+        for target_name, source_name in selected:
             target = staged_dir / target_name
-            shutil.copyfile(source_path, target)
+            target.write_bytes(
+                _git_bytes(source_dir, "cat-file", "blob", f"{commit}:{source_name}")
+            )
             entries.append({"path": target_name, **file_info(target)})
         manifest = {
             "repository": UPSTREAM_REPOSITORY,
