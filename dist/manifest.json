@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "4aa11dc2cdf7ba4a50ec0eb96ce2e819c71cd455",
+  "build": "4.10.0-live.12568521",
+  "defaultVariant": "full",
+  "artifacts": [
+    {
+      "variant": "full",
+      "path": "dist/4.10.0-live.12568521/lang-zh-CN-full.json",
+      "sha256": "4fa35ac844009892a70c7fa1899941ce1cf1f6d70e03a81e7da663a9131e1ceb",
+      "byteLength": 1694900
+    },
+    {
+      "variant": "both",
+      "path": "dist/4.10.0-live.12568521/lang-zh-CN-both.json",
+      "sha256": "c1e9d2b05bdbb4dd067f7295a94d71d5d29624893eaabcafba0986624dddb8ab",
+      "byteLength": 1708007
+    },
+    {
+      "variant": "half",
+      "path": "dist/4.10.0-live.12568521/lang-zh-CN-half.json",
+      "sha256": "8414d9a174839c38f8f6505a845c24a3c3fe28d231d4b3d04f4812ed40c69a4a",
+      "byteLength": 1693812
+    }
+  ],
+  "blocked": [
+    {
+      "variant": "ptu",
+      "report": "reports/ptu-4.10.1-ptu.12578875.json"
+    }
+  ]
+}

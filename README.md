@@ -4,7 +4,9 @@
 
 ## 当前状态
 
-仓库基础与上游快照已建立；**尚未发布中文语言文件**。需要取得对应 build 的中文 `global.ini` 并完成 UI sidecar 审校后，才会生成 `dist/` 产物。不得把空模板或英文回退文件当作中文版本发布。
+已发布 LIVE `4.10.0-live.12568521` 的全汉化、双语和半汉化三种产物。默认 `dist/live.json` 指向全汉化版。222 个 token 风险条目已强制回退英文，59 个尚无中文 sidecar 的 SCMDB UI 条目保持英文。
+
+公开 PTU 源文件的更新时间为 2025-10-15，对当前 PTU 模板缺失 1,042 个 keyed 条目，因此未发布 `dist/ptu.json`；详见 `reports/ptu-4.10.1-ptu.12578875.json`。
 
 ## 目录
 
@@ -33,10 +35,11 @@ SCMDB 可加载的稳定 Raw URL 将是：
 
 ```text
 https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live.json
-https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/ptu.json
+https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-both.json
+https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-half.json
 ```
 
-这些 URL 在对应产物通过审校并提交前不可使用。
+`live.json` 为默认全汉化版；`live-both.json` 为双语版；`live-half.json` 保持物品名、地名英文。PTU 稳定 URL 尚未发布。
 
 ## 同步上游
 

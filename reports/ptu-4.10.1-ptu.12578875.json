@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "blocked",
+  "variant": "ptu",
+  "requestedBuild": "4.10.1-ptu.12578875",
+  "source": {
+    "url": "https://ini.42kit.com/ptu/global.ini",
+    "sha256": "ed1e979dd08bbb054bbf9a4e89cac81ed72b5ac5d97076abca3df2e4ee4506ac",
+    "lastModified": "Wed, 15 Oct 2025 15:26:41 GMT"
+  },
+  "reason": "The public PTU source predates the current template and missed 1042 of 2725 keyed entries; no PTU artifact was published.",
+  "builderStats": {
+    "total": 4504,
+    "translated": 1657,
+    "missing": 1042,
+    "noLocKey": 1779,
+    "placeholderFallback": 26,
+    "mismatch": 97,
+    "communityUiHits": 0,
+    "uiUntranslated": 59
+  }
+}
