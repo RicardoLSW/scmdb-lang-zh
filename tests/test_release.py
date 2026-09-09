@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -138,16 +139,43 @@ class ReleaseToolTests(unittest.TestCase):
         })
         (source / "private.txt").write_text("must not copy", encoding="utf-8")
         subprocess.run(["git", "init", str(source)], check=True, capture_output=True)
+        (source / ".git" / "info" / "attributes").write_text(
+            "*.md text eol=crlf\n*.py text eol=crlf\n*.json text eol=crlf\n",
+            encoding="utf-8",
+        )
         subprocess.run(["git", "-C", str(source), "config", "user.name", "Fixture"], check=True)
         subprocess.run(
             ["git", "-C", str(source), "config", "user.email", "fixture@example.test"],
             check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(source), "config", "core.autocrlf", "true"], check=True
         )
         subprocess.run(["git", "-C", str(source), "add", "."], check=True)
         subprocess.run(
             ["git", "-C", str(source), "commit", "-m", "fixture"],
             check=True,
             capture_output=True,
+        )
+        source_files = (
+            source / "README.md",
+            source / "build_lang_template.py",
+            source / "lang-template-fixture-live.1.json",
+        )
+        for path in source_files:
+            path.unlink()
+        subprocess.run(
+            ["git", "-C", str(source), "checkout", "--", "."], check=True
+        )
+        self.assertTrue(all(b"\r\n" in path.read_bytes() for path in source_files))
+        self.assertEqual(
+            subprocess.run(
+                ["git", "-C", str(source), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout,
+            "",
         )
         commit = subprocess.run(
             ["git", "-C", str(source), "rev-parse", "HEAD"],
@@ -171,6 +199,16 @@ class ReleaseToolTests(unittest.TestCase):
             manifest = release.sync_upstream(
                 source, commit, "2026-09-09T00:00:00Z", target
             )
+            canonical_readme = subprocess.run(
+                ["git", "-C", str(source), "show", f"{commit}:README.md"],
+                check=True,
+                capture_output=True,
+            ).stdout
+            copied_readme = (
+                target / "upstream" / "SCMDB_LANG" / "UPSTREAM_README.md"
+            ).read_bytes()
+            self.assertEqual(copied_readme, canonical_readme)
+            self.assertNotIn(b"\r\n", copied_readme)
             copied = {
                 path.name for path in (target / "upstream" / "SCMDB_LANG").iterdir()
             }
@@ -184,6 +222,62 @@ class ReleaseToolTests(unittest.TestCase):
                 if "keyCount" in item
             ]
             self.assertEqual(templates[0]["keyCount"], 1)
+
+    def test_checked_in_upstream_manifest_matches_git_blobs(self):
+        manifest = release.load_json(release.REPO_ROOT / "upstream" / "manifest.json")
+        for entry in manifest["files"]:
+            with self.subTest(path=entry["path"]):
+                relative = f"upstream/SCMDB_LANG/{entry['path']}"
+                blob = subprocess.run(
+                    ["git", "-C", str(release.REPO_ROOT), "show", f"HEAD:{relative}"],
+                    check=True,
+                    capture_output=True,
+                ).stdout
+                worktree = (release.REPO_ROOT / relative).read_bytes()
+                self.assertEqual(blob, worktree)
+                self.assertNotIn(b"\r\n", blob)
+                self.assertEqual(entry["byteLength"], len(blob))
+                self.assertEqual(entry["sha256"], release.sha256_bytes(blob))
+
+    def test_checked_in_upstream_validates_after_fresh_cross_platform_checkouts(self):
+        expected = release.validate_upstream(release.REPO_ROOT)
+        seed = self.root / "seed"
+        seed.mkdir()
+        shutil.copy2(release.REPO_ROOT / ".gitattributes", seed / ".gitattributes")
+        shutil.copytree(release.REPO_ROOT / "upstream", seed / "upstream")
+        subprocess.run(["git", "init", str(seed)], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(seed), "config", "user.name", "Fixture"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(seed), "config", "user.email", "fixture@example.test"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(seed), "config", "core.autocrlf", "false"], check=True
+        )
+        subprocess.run(["git", "-C", str(seed), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(seed), "commit", "-m", "fixture"],
+            check=True,
+            capture_output=True,
+        )
+
+        for name, autocrlf in (("lf", "false"), ("windows", "true")):
+            with self.subTest(checkout=name):
+                checkout = self.root / f"checkout-{name}"
+                subprocess.run(
+                    [
+                        "git", "-c", f"core.autocrlf={autocrlf}", "clone", "--quiet",
+                        str(seed), str(checkout),
+                    ],
+                    check=True,
+                )
+                self.assertEqual(release.validate_upstream(checkout), expected)
+                readme = (
+                    checkout / "upstream" / "SCMDB_LANG" / "UPSTREAM_README.md"
+                ).read_bytes()
+                self.assertNotIn(b"\r\n", readme)
 
     def test_sync_rejects_non_git_source(self):
         source = self.root / "source"
