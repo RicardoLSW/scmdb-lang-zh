@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +36,7 @@ class ReleaseToolTests(unittest.TestCase):
         })
         previous = self.root / "previous.json"
         release.write_json(previous, {
+            "version": "1-live.1",
             "targetLanguage": "zh-CN",
             "keys": {
                 "same": {"en": "Same", "tr": "相同"},
@@ -49,6 +51,19 @@ class ReleaseToolTests(unittest.TestCase):
         self.assertEqual(report["unchangedKeys"], ["same"])
         self.assertEqual(list(carryover["keys"]), ["same"])
         self.assertEqual(carryover["keys"]["same"]["tr"], "相同")
+
+    def test_template_diff_rejects_mismatched_previous_english(self):
+        old = self.write_template("1-live.1", {"same": "Same"})
+        new = self.write_template("2-live.2", {"same": "Same"})
+        previous = self.root / "previous.json"
+        release.write_json(previous, {
+            "version": "1-live.1",
+            "targetLanguage": "zh-CN",
+            "keys": {"same": {"en": "Wrong source", "tr": "错误继承"}},
+        })
+        report, carryover = release.diff_templates(old, new, previous)
+        self.assertEqual(carryover["keys"], {})
+        self.assertEqual(report["unsafeCarryoverKeys"], ["same"])
 
     def test_generate_variant_forces_token_risks_to_english(self):
         builder = release._load_builder(
@@ -114,18 +129,71 @@ class ReleaseToolTests(unittest.TestCase):
             "version": "fixture-live.1", "keyCount": 1, "keys": {"key": "English"}
         })
         (source / "private.txt").write_text("must not copy", encoding="utf-8")
+        subprocess.run(["git", "init", str(source)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(source), "config", "user.name", "Fixture"], check=True)
+        subprocess.run(
+            ["git", "-C", str(source), "config", "user.email", "fixture@example.test"],
+            check=True,
+        )
+        subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(source), "commit", "-m", "fixture"],
+            check=True,
+            capture_output=True,
+        )
+        commit = subprocess.run(
+            ["git", "-C", str(source), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        remote = self.root / "approved.git"
+        subprocess.run(
+            ["git", "clone", "--bare", str(source), str(remote)],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(source), "remote", "add", "origin", str(remote)],
+            check=True,
+        )
         target = self.root / "target"
-        manifest = release.sync_upstream(source, "a" * 40, "2026-09-09T00:00:00Z", target)
-        copied = {path.name for path in (target / "upstream" / "SCMDB_LANG").iterdir()}
-        self.assertEqual(copied, {
-            "UPSTREAM_README.md", "build_lang_template.py",
-            "lang-template-fixture-live.1.json",
-        })
-        self.assertEqual(manifest["upstreamCommit"], "a" * 40)
-        templates = [
-            item for item in release.validate_upstream(target)["files"] if "keyCount" in item
-        ]
-        self.assertEqual(templates[0]["keyCount"], 1)
+        approved_url = str(remote).removesuffix(".git")
+        with mock.patch.object(release, "UPSTREAM_REPOSITORY", approved_url):
+            manifest = release.sync_upstream(
+                source, commit, "2026-09-09T00:00:00Z", target
+            )
+            copied = {
+                path.name for path in (target / "upstream" / "SCMDB_LANG").iterdir()
+            }
+            self.assertEqual(copied, {
+                "UPSTREAM_README.md", "build_lang_template.py",
+                "lang-template-fixture-live.1.json",
+            })
+            self.assertEqual(manifest["upstreamCommit"], commit)
+            templates = [
+                item for item in release.validate_upstream(target)["files"]
+                if "keyCount" in item
+            ]
+            self.assertEqual(templates[0]["keyCount"], 1)
+
+    def test_sync_rejects_non_git_source(self):
+        source = self.root / "source"
+        source.mkdir()
+        with self.assertRaisesRegex(release.ReleaseError, "cannot verify upstream Git checkout"):
+            release.sync_upstream(source, "a" * 40, "2026-09-09T00:00:00Z", self.root / "target")
+
+    def test_candidate_output_cannot_target_repository_dist(self):
+        with self.assertRaisesRegex(release.ReleaseError, "must stay under"):
+            release.build_release(
+                self.root / "missing-config.json",
+                {},
+                release.REPO_ROOT,
+                release.REPO_ROOT,
+            )
+        for unsafe in ("../live.json", "nested/live.json", "C:\\live.json"):
+            with self.assertRaises(release.ReleaseError):
+                release._safe_output_name(unsafe, "alias")
 
     def test_raw_check_requires_cors_and_matching_hash(self):
         body = b"candidate"

@@ -140,22 +140,42 @@ def validate_upstream(repo_root: Path = REPO_ROOT) -> dict[str, Any]:
     }
 
 
+def _git_output(source_dir: Path, *args: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(source_dir), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ReleaseError(f"cannot verify upstream Git checkout: {' '.join(args)}") from exc
+    return completed.stdout.strip()
+
+
+def _normalize_repository_url(url: str) -> str:
+    return url.removesuffix(".git").rstrip("/")
+
+
 def sync_upstream(source_dir: Path, commit: str, synced_at: str, repo_root: Path) -> dict[str, Any]:
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ReleaseError("--commit must be a full lowercase Git SHA")
     _parse_datetime(synced_at)
     if not source_dir.is_dir():
         raise ReleaseError(f"source directory not found: {source_dir}")
-    if (source_dir / ".git").exists():
-        completed = subprocess.run(
-            ["git", "-C", str(source_dir), "rev-parse", "HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        actual_commit = completed.stdout.strip().lower()
-        if actual_commit != commit:
-            raise ReleaseError(f"source checkout is {actual_commit}, expected pinned commit {commit}")
+    actual_commit = _git_output(source_dir, "rev-parse", "HEAD").lower()
+    if actual_commit != commit:
+        raise ReleaseError(f"source checkout is {actual_commit}, expected pinned commit {commit}")
+    repository = _normalize_repository_url(_git_output(source_dir, "remote", "get-url", "origin"))
+    if repository != UPSTREAM_REPOSITORY:
+        raise ReleaseError(f"source remote is not the approved repository: {repository}")
+    _git_output(source_dir, "fetch", "--no-tags", "origin", commit)
+    fetched_commit = _git_output(source_dir, "rev-parse", "FETCH_HEAD").lower()
+    if fetched_commit != commit:
+        raise ReleaseError(f"approved remote returned {fetched_commit}, expected {commit}")
+    if _git_output(source_dir, "status", "--porcelain", "--untracked-files=all"):
+        raise ReleaseError("source checkout must be clean before syncing")
+
     selected: list[tuple[str, Path]] = []
     readme = source_dir / "README.md"
     builder = source_dir / "build_lang_template.py"
@@ -167,15 +187,18 @@ def sync_upstream(source_dir: Path, commit: str, synced_at: str, repo_root: Path
         selected.append((path.name, path))
     if len(selected) == 2:
         raise ReleaseError("source contains no valid lang-template-*.json")
+
     upstream_parent = repo_root / "upstream"
-    target_dir = upstream_parent / "SCMDB_LANG"
-    upstream_parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=upstream_parent) as temp_name:
-        staged = Path(temp_name) / "SCMDB_LANG"
-        staged.mkdir()
+    repo_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=repo_root) as temp_name:
+        staged_root = Path(temp_name) / "snapshot"
+        staged_upstream = staged_root / "upstream"
+        staged_dir = staged_upstream / "SCMDB_LANG"
+        staged_manifest = staged_upstream / "manifest.json"
+        staged_dir.mkdir(parents=True)
         entries = []
         for target_name, source_path in selected:
-            target = staged / target_name
+            target = staged_dir / target_name
             shutil.copyfile(source_path, target)
             entries.append({"path": target_name, **file_info(target)})
         manifest = {
@@ -185,10 +208,9 @@ def sync_upstream(source_dir: Path, commit: str, synced_at: str, repo_root: Path
             "redistributionPermissionConfirmed": True,
             "files": entries,
         }
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
-        shutil.move(str(staged), target_dir)
-        write_json(upstream_parent / "manifest.json", manifest)
+        write_json(staged_manifest, manifest)
+        validate_upstream(staged_root)
+        _replace_output_directory(staged_upstream, upstream_parent)
     validate_upstream(repo_root)
     return manifest
 
@@ -228,17 +250,22 @@ def diff_templates(
     if previous_translation_path:
         previous = load_json(previous_translation_path)
         previous_keys = previous.get("keys")
+        if previous.get("version") != old["version"]:
+            raise ReleaseError("previous translation version does not match the old template")
         if not isinstance(previous_keys, dict):
             raise ReleaseError("previous translation has no keys object")
         inherited = {}
+        unsafe = []
         for key in unchanged:
             value = previous_keys.get(key)
             if (
                 isinstance(value, dict)
-                and isinstance(value.get("en"), str)
+                and value.get("en") == old_keys[key]
                 and isinstance(value.get("tr"), str)
             ):
                 inherited[key] = {"en": new_keys[key], "tr": value["tr"]}
+            elif value is not None:
+                unsafe.append(key)
         carryover = {
             "schemaVersion": 1,
             "oldVersion": old["version"],
@@ -248,6 +275,8 @@ def diff_templates(
             "keys": inherited,
         }
         report["inheritedCount"] = len(inherited)
+        report["unsafeCarryoverCount"] = len(unsafe)
+        report["unsafeCarryoverKeys"] = sorted(unsafe)
     return report, carryover
 
 
@@ -384,7 +413,39 @@ def _check_raw_url(url: str, expected_sha256: str) -> dict[str, Any]:
         return {"url": url, "status": "failed", "error": str(exc)}
 
 
-def build_release(
+def _safe_output_name(value: Any, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in (".", "..")
+        or Path(value).name != value
+        or "/" in value
+        or "\\" in value
+    ):
+        raise ReleaseError(f"{field} must be a plain relative filename")
+    return value
+
+
+def _replace_output_directory(staged: Path, target: Path) -> None:
+    backup = target.with_name(f"{target.name}.previous")
+    if backup.exists():
+        shutil.rmtree(backup)
+    try:
+        if target.exists():
+            target.replace(backup)
+        staged.replace(target)
+    except OSError:
+        if target.exists():
+            shutil.rmtree(target)
+        if backup.exists():
+            backup.replace(target)
+        raise
+    finally:
+        if backup.exists():
+            shutil.rmtree(backup)
+
+
+def _build_release_into(
     config_path: Path,
     source_paths: dict[str, Path],
     output_root: Path,
@@ -404,6 +465,15 @@ def build_release(
     if not isinstance(variants, dict) or not isinstance(source_metadata, dict):
         raise ReleaseError("config variants and sources must be objects")
     expected_variants = set(variants)
+    for variant, variant_config in variants.items():
+        if not isinstance(variant_config, dict):
+            raise ReleaseError(f"variant config must be an object: {variant}")
+        _safe_output_name(variant_config.get("artifact"), f"artifact for {variant}")
+        aliases = variant_config.get("aliases", [])
+        if not isinstance(aliases, list):
+            raise ReleaseError(f"aliases must be an array: {variant}")
+        for alias in aliases:
+            _safe_output_name(alias, f"alias for {variant}")
     if set(source_paths) != expected_variants:
         raise ReleaseError(
             f"source variants must be exactly {sorted(expected_variants)}; got {sorted(source_paths)}"
@@ -520,6 +590,28 @@ def build_release(
     }
     write_json(reports_root / "validation.json", validation)
     return validation, all_publishable
+
+
+def build_release(
+    config_path: Path,
+    source_paths: dict[str, Path],
+    output_root: Path,
+    repo_root: Path = REPO_ROOT,
+    check_cors: bool = False,
+) -> tuple[dict[str, Any], bool]:
+    candidate_root = (repo_root / "build" / "candidates").resolve()
+    target = output_root.resolve()
+    if target == candidate_root or candidate_root not in target.parents:
+        raise ReleaseError(f"candidate output must stay under {candidate_root}")
+    candidate_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=candidate_root) as temp_name:
+        staged = Path(temp_name) / "candidate"
+        validation, publishable = _build_release_into(
+            config_path, source_paths, staged, repo_root, check_cors
+        )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _replace_output_directory(staged, target)
+    return validation, publishable
 
 
 def _build_parser() -> argparse.ArgumentParser:
