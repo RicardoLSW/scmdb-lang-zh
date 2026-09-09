@@ -195,6 +195,62 @@ class ReleaseToolTests(unittest.TestCase):
             with self.assertRaises(release.ReleaseError):
                 release._safe_output_name(unsafe, "alias")
 
+    def test_checked_in_live_release_matches_current_output_contract(self):
+        config = release.load_json(release.REPO_ROOT / "release" / "live.json")
+        manifest = release.load_json(release.REPO_ROOT / "dist" / "manifest.json")
+        self.assertEqual(manifest["schemaVersion"], 2)
+        self.assertEqual(manifest["channel"], config["channel"])
+        self.assertEqual(manifest["status"], "candidate")
+        self.assertEqual(
+            manifest["blocked"],
+            release.load_blocked_releases(config, release.REPO_ROOT),
+        )
+
+        artifacts = {item["variant"]: item for item in manifest["artifacts"]}
+        for variant, source in config["sources"].items():
+            report = release.load_json(
+                release.REPO_ROOT / "reports" / config["build"] / f"{variant}.json"
+            )
+            self.assertEqual(report["schemaVersion"], 2)
+            self.assertEqual(report["build"], config["build"])
+            self.assertEqual(report["source"]["version"], source["version"])
+            self.assertEqual(report["gates"], {"status": "passed", "failures": []})
+            self.assertEqual(report["artifact"], artifacts[variant])
+            self.assertEqual(report["artifact"]["variant"], variant)
+            self.assertEqual(report["uiSidecar"]["path"], config["uiSidecar"])
+
+    def test_blocked_release_reports_are_hash_pinned(self):
+        report_path = self.root / "reports" / "ptu.json"
+        report = {
+            "schemaVersion": 1,
+            "status": "blocked",
+            "variant": "ptu",
+            "requestedBuild": "fixture-ptu.1",
+        }
+        release.write_json(report_path, report)
+        config = {
+            "variants": {"full": {}},
+            "blocked": [{
+                "variant": "ptu",
+                "report": "reports/ptu.json",
+                "sha256": release.file_info(report_path)["sha256"],
+            }],
+        }
+        self.assertEqual(
+            release.load_blocked_releases(config, self.root),
+            [{
+                "variant": "ptu",
+                "build": "fixture-ptu.1",
+                "report": "reports/ptu.json",
+                "reportSchemaVersion": 1,
+                "sha256": release.file_info(report_path)["sha256"],
+            }],
+        )
+        report["reason"] = "changed"
+        release.write_json(report_path, report)
+        with self.assertRaisesRegex(release.ReleaseError, "blocked report SHA-256 mismatch"):
+            release.load_blocked_releases(config, self.root)
+
     def test_raw_check_requires_cors_and_matching_hash(self):
         body = b"candidate"
 
