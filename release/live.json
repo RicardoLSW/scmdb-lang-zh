@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "channel": "live",
+  "build": "4.10.0-live.12568521",
+  "targetLanguage": "zh-CN",
+  "template": "upstream/SCMDB_LANG/lang-template-4.10.0-live.12568521.json",
+  "uiSidecar": "ui/scmdb_ui_zh-CN.json",
+  "defaultVariant": "full",
+  "policy": {
+    "maxSourceAgeDays": 120,
+    "maxMissingCount": 100,
+    "maxMissingRatio": 0.05
+  },
+  "variants": {
+    "full": {
+      "artifact": "lang-zh-CN-full.json",
+      "aliases": ["live.json", "live-full.json"]
+    },
+    "both": {
+      "artifact": "lang-zh-CN-both.json",
+      "aliases": ["live-both.json"]
+    },
+    "half": {
+      "artifact": "lang-zh-CN-half.json",
+      "aliases": ["live-half.json"]
+    }
+  },
+  "sources": {
+    "full": {
+      "url": "https://ini.42kit.com/full/global.ini",
+      "sha256": "aa3667b9cb82f17f3144b2e8c64f8fc3496b68ec054982bf642eb9744ac97394",
+      "lastModified": "Thu, 27 Aug 2026 06:06:49 GMT",
+      "version": "4.10.0-live.12568521"
+    },
+    "both": {
+      "url": "https://ini.42kit.com/both/global.ini",
+      "sha256": "f9042b9fb61926b7d4be2afadbc3f22557879b73fc6abcf663e760207f362e17",
+      "lastModified": "Thu, 27 Aug 2026 06:06:51 GMT",
+      "version": "4.10.0-live.12568521"
+    },
+    "half": {
+      "url": "https://ini.42kit.com/half/global.ini",
+      "sha256": "a737e8471ab2579e955e430658f02715e31d0adf6016088f7ec04e2d102e1122",
+      "lastModified": "Thu, 27 Aug 2026 06:06:50 GMT",
+      "version": "4.10.0-live.12568521"
+    }
+  },
+  "rawUrls": {
+    "dist/live.json": "https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live.json",
+    "dist/live-full.json": "https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-full.json",
+    "dist/live-both.json": "https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-both.json",
+    "dist/live-half.json": "https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-half.json"
+  }
+}

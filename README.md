@@ -13,25 +13,31 @@
 - `upstream/SCMDB_LANG/`：获准再分发的 `KrovaxCode/SCMDB_LANG` 固定快照。
 - `upstream/manifest.json`：来源仓库、commit、同步时间、文件大小与 SHA-256。
 - `ui/scmdb_ui_zh-CN.json`：SCMDB 自身 `scmdb_ui_*` 文案的人工翻译 sidecar。
-- `dist/`：审核通过后发布的版本化语言文件；当前为空。
+- `dist/`：审核通过并提交的版本化语言文件与稳定入口。
+- `release/`：版本、来源哈希、来源日期、variant、稳定别名与发布门禁配置。
+- `tools/release.py`：固定上游同步、模板差异、候选生成和发布校验 CLI。
+- `build/candidates/`：本地候选输出（Git 忽略，不会自动发布）。
 
-## 生成翻译
+## 一条命令重建当前 LIVE
 
-把合法取得、允许用于本项目的中文 `global.ini` 放在仓库外部，再运行固定快照中的工具：
+把合法取得、允许用于本项目的三个中文 `global.ini` 放在仓库外部。以下是一条逻辑命令；路径可以是绝对路径：
 
 ```bash
-python upstream/SCMDB_LANG/build_lang_template.py   --profile ptu   --translate /path/to/global_zh-CN.ini   --translate-ui ui/scmdb_ui_zh-CN.json
+python tools/release.py build --config release/live.json --source full=/outside/full/global.ini --source both=/outside/both/global.ini --source half=/outside/half/global.ini --check-cors
 ```
 
-工具会把文件生成在 `upstream/SCMDB_LANG/`。发布前应：
+工具先验证固定上游 commit、允许文件、模板文件名、`version`、`keyCount`、重复键、字节数和 SHA-256，再校验外部 INI 的配置版本、SHA-256、更新时间和缺失率。随后生成：
 
-1. 核对输出 `version` 与目标 SCMDB build 完全一致；
-2. 审查 `missing`、`mismatch`、`placeholderFallback`、`uiUntranslated`；
-3. 把通过审查的文件移动到 `dist/<完整-build>/lang-zh-CN.json`；
-4. 同时更新稳定入口 `dist/live.json` 或 `dist/ptu.json`；
-5. 更新 `dist/manifest.json`，记录上游 commit、文件 SHA-256、覆盖统计和审校状态。
+- `build/candidates/live/dist/<完整-build>/lang-zh-CN-{full,both,half}.json`；
+- `build/candidates/live/dist/live*.json` 稳定别名；
+- `build/candidates/live/dist/manifest.json`；
+- `build/candidates/live/reports/<完整-build>/{full,both,half,validation}.json`。
 
-SCMDB 可加载的稳定 Raw URL 将是：
+`mismatchKeys` 中的 token 风险条目会强制回退英文。来源版本缺失或不匹配、来源过旧、缺失率异常、产物 schema/哈希/别名或 Raw CORS 校验失败时，命令返回非零并把候选标记为 `blocked`。报告只记录 key 名、计数、来源元数据和哈希，不记录外部 INI 的原文或本地路径。
+
+候选不会写入仓库的 `dist/`，也不会提交、推送或发布。人工审校通过后，才可显式复制候选并更新已跟踪产物。
+
+SCMDB 可加载的稳定 Raw URL 是：
 
 ```text
 https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live.json
@@ -41,16 +47,26 @@ https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-half.j
 
 `live.json` 为默认全汉化版；`live-both.json` 为双语版；`live-half.json` 保持物品名、地名英文。PTU 稳定 URL 尚未发布。
 
-## 同步上游
+## 同步与差异分析
 
-1. 拉取 <https://github.com/KrovaxCode/SCMDB_LANG> 最新版本并记录 commit。
-2. 只复制 `build_lang_template.py`、`README.md` 和 `lang-template-*.json`。
-3. 验证模板文件名、`version`、`keyCount` 和 `keys` 一致。
-4. 更新 `upstream/manifest.json` 的 SHA-256 与字节数。
-5. 对比新旧模板：新增 key 进入待翻译；删除 key 不再发布；英文源变化的 key 必须重新审校；未变化 key 才可继承既有译文。
-6. 重新生成并执行占位符、覆盖率与人工 UI 文案检查后，再更新 `dist/`。
+先把上游 checkout 固定到明确的 40 位 commit，再同步允许文件；`--synced-at` 必须显式给出，使 manifest 可重复：
 
-同步和发布目前均为人工操作，不配置定时任务或自动发布，避免未经审校的上游变化直接进入用户加载的稳定 URL。
+```bash
+python tools/release.py sync-upstream --source-dir ../SCMDB_LANG --commit <40位commit> --synced-at 2026-09-09T00:00:00Z
+python tools/release.py validate-upstream --report build/upstream-validation.json
+```
+
+同步只复制 `build_lang_template.py`、`README.md`（仓库内命名为 `UPSTREAM_README.md`）和合法的 `lang-template-*.json`，并更新固定 commit、字节数和 SHA-256。其他上游文件不会进入快照。
+
+比较新旧模板并生成只含安全继承项的 sidecar：
+
+```bash
+python tools/release.py diff --old upstream/SCMDB_LANG/lang-template-old.json --new upstream/SCMDB_LANG/lang-template-new.json --previous-translation dist/old/lang-zh-CN-full.json --report build/template-diff.json --carryover build/unchanged-carryover.json
+```
+
+差异报告分别列出新增、删除、英文源变化和未变化 key。`carryover` 只包含英文源未变化且旧产物结构有效的 key；新增 key 和英文源变化 key 必须重新审校。
+
+同步、生成和校验都不会配置定时任务、自动提交或自动发布，避免未经审校的变化进入用户加载的稳定 URL。
 
 ## 权利与边界
 
