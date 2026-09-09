@@ -5,6 +5,8 @@
   "targetLanguage": "zh-CN",
   "template": "upstream/SCMDB_LANG/lang-template-4.10.0-live.12568521.json",
   "uiSidecar": "ui/scmdb_ui_zh-CN.json",
+  "uiReviewedSource": "ui/reviewed/scmdb-zh-extension-2026.09.0.json",
+  "uiCoverageReport": "reports/4.10.0-live.12568521/ui-sidecar-coverage.json",
   "defaultVariant": "full",
   "policy": {
     "maxSourceAgeDays": 120,

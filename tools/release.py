@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+from collections import Counter
 import importlib.util
 import json
 import re
@@ -18,11 +19,23 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_REPOSITORY = "https://github.com/KrovaxCode/SCMDB_LANG"
 TEMPLATE_RE = re.compile(r"^lang-template-(.+)\.json$")
 PINNED_FILES = {"UPSTREAM_README.md", "build_lang_template.py"}
+UI_PREFIX = "scmdb_ui_"
+PROTECTED_TOKEN_RE = re.compile(
+    r"\\u003c/?EM[0-9]*\\u003e|</?EM[0-9]*>|\[[^\[\]\r\n]+\]|"
+    r"\{[^{}\r\n]+\}|%(?:[A-Za-z_][A-Za-z0-9_.:-]*|[0-9]+)%|"
+    r"%\([A-Za-z_][A-Za-z0-9_]*\)[#0\-+'I]*(?:\d+|\*)?(?:\.(?:\d+|\*))?"
+    r"(?:hh|h|ll|l|j|z|t|L)?[diuoxXfFeEgGaAcspn]|"
+    r"%(?:\d+\$)?[#0\-+'I]*(?:\d+|\*)?(?:\.(?:\d+|\*))?"
+    r"(?:hh|h|ll|l|j|z|t|L)?[diuoxXfFeEgGaAcspn]|%%|"
+    r"\\(?:u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|.)",
+    re.IGNORECASE,
+)
 
 
 class ReleaseError(RuntimeError):
@@ -317,6 +330,400 @@ def validate_translation_artifact(artifact: dict[str, Any], build: str) -> None:
             raise ReleaseError(f"artifact entry is invalid: {key}")
 
 
+def _normalize_protected_token(value: str) -> str:
+    if re.fullmatch(r"(?:<|\\u003c)/?EM[0-9]*(?:>|\\u003e)", value, re.IGNORECASE):
+        tag = re.search(r"EM[0-9]*", value, re.IGNORECASE)
+        closing = "</" in value or "\\u003c/" in value.lower()
+        return f"<{'/' if closing else ''}{tag.group(0).upper()}>"
+    if value == r"\\":
+        return "\\"
+    return value
+
+
+def extract_protected_tokens(text: str) -> list[dict[str, str]]:
+    tokens = []
+    for match in PROTECTED_TOKEN_RE.finditer(text):
+        value = _normalize_protected_token(match.group(0))
+        if value.startswith("["):
+            kind = "square_placeholder"
+        elif value.startswith("{"):
+            kind = "curly_placeholder"
+        elif value.startswith("%"):
+            kind = "percent_placeholder"
+        elif value.startswith("<"):
+            kind = "em_tag"
+        else:
+            kind = "escape"
+        tokens.append({"kind": kind, "value": value})
+    return tokens
+
+
+def _em_structure_errors(tokens: list[str]) -> list[str]:
+    stack = []
+    errors = []
+    for token in tokens:
+        if not token.startswith("</"):
+            stack.append(token)
+            continue
+        opening = f"<{token[2:]}"
+        actual = stack.pop() if stack else None
+        if actual != opening:
+            errors.append(f"expected {actual or 'opening tag'} before {token}")
+    errors.extend(f"unclosed {token}" for token in reversed(stack))
+    return errors
+
+
+def _unrecognized_percent_sequences(text: str) -> list[str]:
+    recognized = [
+        match.span()
+        for match in PROTECTED_TOKEN_RE.finditer(text)
+        if match.group(0).startswith("%")
+    ]
+    unknown = []
+    for index, value in enumerate(text):
+        if value != "%" or any(start <= index < end for start, end in recognized):
+            continue
+        if index > 0 and (text[index - 1].isdigit() or text[index - 1] in "}]"):
+            continue
+        unknown.append(text[index:index + 12])
+    return unknown
+
+
+def _ordered_printf_tokens(tokens: list[dict[str, str]]) -> list[str]:
+    ordered = []
+    for token in tokens:
+        value = token["value"]
+        if token["kind"] != "percent_placeholder" or value == "%%":
+            continue
+        if value.endswith("%") or value.startswith("%(") or re.match(r"%\d+\$", value):
+            continue
+        ordered.append(value)
+    return ordered
+
+
+def validate_translation_tokens(source_text: str, translation_text: str) -> dict[str, Any]:
+    source = extract_protected_tokens(source_text)
+    translation = extract_protected_tokens(translation_text)
+    source_values = [token["value"] for token in source]
+    translation_values = [token["value"] for token in translation]
+    source_counts = Counter(source_values)
+    translation_counts = Counter(translation_values)
+    missing = sorted((source_counts - translation_counts).elements())
+    unexpected = sorted((translation_counts - source_counts).elements())
+    source_em = [token["value"] for token in source if token["kind"] == "em_tag"]
+    translation_em = [token["value"] for token in translation if token["kind"] == "em_tag"]
+    source_em_errors = _em_structure_errors(source_em)
+    translation_em_errors = _em_structure_errors(translation_em)
+    source_printf = _ordered_printf_tokens(source)
+    translation_printf = _ordered_printf_tokens(translation)
+    source_unknown_percent = _unrecognized_percent_sequences(source_text)
+    translation_unknown_percent = _unrecognized_percent_sequences(translation_text)
+    return {
+        "valid": not missing
+        and not unexpected
+        and source_em == translation_em
+        and source_printf == translation_printf
+        and not source_em_errors
+        and not translation_em_errors
+        and not source_unknown_percent
+        and not translation_unknown_percent,
+        "source": source,
+        "translation": translation,
+        "missing": missing,
+        "unexpected": unexpected,
+        "sourceEmErrors": source_em_errors,
+        "translationEmErrors": translation_em_errors,
+        "sourceUnknownPercent": source_unknown_percent,
+        "translationUnknownPercent": translation_unknown_percent,
+        "printfSequenceMatches": source_printf == translation_printf,
+        "emSequenceMatches": source_em == translation_em,
+    }
+
+
+def load_project_ui_sidecar(
+    path: Path,
+    template: dict[str, Any],
+    target_language: str,
+    repo_root: Path = REPO_ROOT,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    data = load_json(path)
+    if data.get("schemaVersion") != 1:
+        raise ReleaseError("UI sidecar schemaVersion must be 1")
+    if data.get("lang") != target_language:
+        raise ReleaseError("UI sidecar language does not match targetLanguage")
+    generated_from = data.get("generatedFrom")
+    if not isinstance(generated_from, dict):
+        raise ReleaseError("UI sidecar generatedFrom metadata is required")
+    for field in ("repository", "commit", "path", "dictionaryVersion"):
+        if not isinstance(generated_from.get(field), str) or not generated_from[field]:
+            raise ReleaseError(f"UI sidecar generatedFrom.{field} is required")
+    if not re.fullmatch(r"[0-9a-f]{40}", generated_from["commit"]):
+        raise ReleaseError("UI sidecar generatedFrom.commit must be a full Git SHA")
+    keys = data.get("keys")
+    if not isinstance(keys, dict):
+        raise ReleaseError("UI sidecar keys must be an object")
+    template_keys = template.get("keys")
+    if not isinstance(template_keys, dict):
+        raise ReleaseError("template keys must be an object")
+
+    loaded = {}
+    for key, value in sorted(keys.items()):
+        if not isinstance(key, str) or not key.startswith(UI_PREFIX) or key not in template_keys:
+            raise ReleaseError(f"unknown UI sidecar key: {key}")
+        if not isinstance(value, dict):
+            raise ReleaseError(f"UI sidecar entry must be an object: {key}")
+        english = value.get("en")
+        translated = value.get("tr")
+        if english != template_keys[key]:
+            raise ReleaseError(f"UI sidecar English source changed: {key}")
+        if not isinstance(translated, str) or not translated.strip():
+            raise ReleaseError(f"UI sidecar translation is empty: {key}")
+        source = value.get("source")
+        if not isinstance(source, dict):
+            raise ReleaseError(f"UI sidecar source metadata is required: {key}")
+        for field in ("repository", "commit", "path", "entryId", "reviewedBy", "reviewedAt"):
+            if not isinstance(source.get(field), str) or not source[field]:
+                raise ReleaseError(f"UI sidecar source.{field} is required: {key}")
+        if source["repository"] != generated_from["repository"]:
+            raise ReleaseError(f"UI sidecar source repository mismatch: {key}")
+        if source["commit"] != generated_from["commit"]:
+            raise ReleaseError(f"UI sidecar source commit mismatch: {key}")
+        if source["path"] != generated_from["path"]:
+            raise ReleaseError(f"UI sidecar source path mismatch: {key}")
+        token_report = validate_translation_tokens(english, translated)
+        if not token_report["valid"]:
+            raise ReleaseError(f"UI sidecar token mismatch: {key}")
+        loaded[key] = translated
+
+    ui_keys = sorted(key for key in template_keys if key.startswith(UI_PREFIX))
+    translated_keys = sorted(loaded)
+    english_fallback_keys = sorted(set(ui_keys) - set(translated_keys))
+    try:
+        display_path = path.relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        display_path = path.name
+    coverage = {
+        "path": display_path,
+        "sha256": sha256_bytes(json_bytes(data)),
+        "templateCount": len(ui_keys),
+        "translatedCount": len(translated_keys),
+        "englishFallbackCount": len(english_fallback_keys),
+        "translatedKeys": translated_keys,
+        "englishFallbackKeys": english_fallback_keys,
+        "generatedFrom": generated_from,
+    }
+    return loaded, coverage
+
+
+def ui_template_context(key: str) -> tuple[str, str]:
+    if key.startswith("scmdb_ui_tag_"):
+        return "view", "missions"
+    if key.startswith("scmdb_ui_fab_"):
+        return ("filter" if "_filter" in key else "view"), "fabricator"
+    if key.startswith(("scmdb_ui_stat_", "scmdb_ui_unit_")):
+        return "view", "fabricator"
+    raise ReleaseError(f"unknown SCMDB UI key context: {key}")
+
+
+def _reviewed_ui_entries(source: dict[str, Any]) -> list[dict[str, Any]]:
+    if source.get("schemaVersion") != 1:
+        raise ReleaseError("reviewed source schemaVersion must be 1")
+    for field in ("repository", "commit", "path", "dictionaryVersion"):
+        if not isinstance(source.get(field), str) or not source[field].strip():
+            raise ReleaseError(f"reviewed source {field} is required")
+    if not re.fullmatch(r"[0-9a-f]{40}", source["commit"]):
+        raise ReleaseError("reviewed source commit must be a full Git SHA")
+    entries = source.get("entries")
+    if not isinstance(entries, list):
+        raise ReleaseError("reviewed source entries must be an array")
+    reviewed = []
+    seen_ids = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ReleaseError("reviewed source entry must be an object")
+        entry_id = entry.get("id")
+        if not isinstance(entry_id, str) or not entry_id.strip():
+            raise ReleaseError("reviewed source entry id is required")
+        if entry_id in seen_ids:
+            raise ReleaseError(f"duplicate reviewed source entry id: {entry_id}")
+        seen_ids.add(entry_id)
+        for field in ("sourceText", "translation", "context"):
+            if not isinstance(entry.get(field), str) or not entry[field].strip():
+                raise ReleaseError(f"reviewed source {field} is required: {entry_id}")
+        page_families = entry.get("pageFamilies")
+        review = entry.get("review")
+        if not isinstance(page_families, list) or not all(
+            isinstance(value, str) and value.strip() for value in page_families
+        ):
+            raise ReleaseError(f"reviewed source pageFamilies are invalid: {entry_id}")
+        if not isinstance(review, dict):
+            raise ReleaseError(f"review metadata is required: {entry_id}")
+        if entry.get("status") == "active" and review.get("status") == "approved":
+            for field in ("reviewedBy", "reviewedAt"):
+                if not isinstance(review.get(field), str) or not review[field].strip():
+                    raise ReleaseError(f"review {field} is required: {entry_id}")
+            reviewed.append(entry)
+    return reviewed
+
+
+def build_ui_migration(
+    template: dict[str, Any], source: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    template_keys = template.get("keys")
+    if not isinstance(template.get("version"), str) or not isinstance(template_keys, dict):
+        raise ReleaseError("template version and keys are required")
+    reviewed = _reviewed_ui_entries(source)
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    for entry in reviewed:
+        by_source.setdefault(entry["sourceText"], []).append(entry)
+
+    generated_from = {
+        "repository": source["repository"],
+        "commit": source["commit"],
+        "path": source["path"],
+        "dictionaryVersion": source["dictionaryVersion"],
+    }
+    if isinstance(source.get("issue"), str):
+        generated_from["issue"] = source["issue"]
+    sidecar = {
+        "schemaVersion": 1,
+        "lang": "zh-CN",
+        "generatedFrom": generated_from,
+        "matchingPolicy": "exact English source plus compatible context and page family",
+        "keys": {},
+    }
+
+    coverage_entries = []
+    reason_counts = Counter()
+    template_sources = set()
+    for key in sorted(key for key in template_keys if key.startswith(UI_PREFIX)):
+        english = template_keys[key]
+        template_sources.add(english)
+        context, page_family = ui_template_context(key)
+        exact = sorted(by_source.get(english, []), key=lambda item: item["id"])
+        compatible = [
+            entry
+            for entry in exact
+            if entry["context"] == context and page_family in entry["pageFamilies"]
+        ]
+        row = {
+            "key": key,
+            "english": english,
+            "context": context,
+            "pageFamily": page_family,
+            "tokens": extract_protected_tokens(english),
+        }
+        if not exact:
+            row.update(status="english_fallback", reason="missing_exact_source")
+        elif not compatible:
+            row.update(
+                status="english_fallback",
+                reason="context_mismatch",
+                sourceEntryIds=[entry["id"] for entry in exact],
+            )
+        elif len(compatible) > 1:
+            row.update(
+                status="english_fallback",
+                reason="conflicting_exact_source",
+                sourceEntryIds=[entry["id"] for entry in compatible],
+            )
+        else:
+            entry = compatible[0]
+            token_report = validate_translation_tokens(english, entry["translation"])
+            if not token_report["valid"]:
+                row.update(
+                    status="english_fallback",
+                    reason="token_mismatch",
+                    sourceEntryIds=[entry["id"]],
+                )
+            else:
+                review = entry["review"]
+                sidecar["keys"][key] = {
+                    "en": english,
+                    "tr": entry["translation"],
+                    "source": {
+                        "repository": source["repository"],
+                        "commit": source["commit"],
+                        "path": source["path"],
+                        "entryId": entry["id"],
+                        "reviewedBy": review["reviewedBy"],
+                        "reviewedAt": review["reviewedAt"],
+                    },
+                }
+                row.update(
+                    status="migrated",
+                    sourceEntryIds=[entry["id"]],
+                    translation=entry["translation"],
+                )
+        if row["status"] == "english_fallback":
+            reason_counts[row["reason"]] += 1
+        coverage_entries.append(row)
+
+    unmatched = [
+        {
+            "id": entry["id"],
+            "sourceText": entry["sourceText"],
+            "context": entry["context"],
+            "pageFamilies": entry["pageFamilies"],
+            "reason": "no_exact_template_source",
+        }
+        for entry in reviewed
+        if entry["sourceText"] not in template_sources
+    ]
+    migrated = len(sidecar["keys"])
+    coverage = {
+        "schemaVersion": 1,
+        "template": {
+            "version": template["version"],
+            "keyCount": template.get("keyCount"),
+            "uiKeyCount": len(coverage_entries),
+        },
+        "source": {**generated_from, "reviewedEntryCount": len(reviewed)},
+        "matchingPolicy": sidecar["matchingPolicy"],
+        "summary": {
+            "templateUiKeys": len(coverage_entries),
+            "reviewedEntries": len(reviewed),
+            "migrated": migrated,
+            "englishFallback": len(coverage_entries) - migrated,
+            "sourceUnmatched": len(unmatched),
+            "fallbackReasons": dict(sorted(reason_counts.items())),
+        },
+        "entries": coverage_entries,
+        "unmatchedReviewedEntries": sorted(unmatched, key=lambda item: item["id"]),
+    }
+    return sidecar, coverage
+
+
+def load_checked_ui_migration(
+    config: dict[str, Any], template: dict[str, Any], repo_root: Path
+) -> tuple[dict[str, str], dict[str, Any]]:
+    repo_root = repo_root.resolve()
+    sidecar_path = _resolve_config_path(config, "uiSidecar", repo_root)
+    source_path = _resolve_config_path(config, "uiReviewedSource", repo_root)
+    coverage_path = _resolve_config_path(config, "uiCoverageReport", repo_root)
+    source = load_json(source_path)
+    expected_sidecar, expected_coverage = build_ui_migration(template, source)
+    if load_json(sidecar_path) != expected_sidecar:
+        raise ReleaseError("UI sidecar does not match the reviewed source migration")
+    if load_json(coverage_path) != expected_coverage:
+        raise ReleaseError("UI coverage report does not match the reviewed source migration")
+    loaded, coverage = load_project_ui_sidecar(
+        sidecar_path, template, config.get("targetLanguage", "zh-CN"), repo_root
+    )
+    coverage.update({
+        "reviewedSource": {
+            "path": source_path.relative_to(repo_root).as_posix(),
+            "sha256": sha256_bytes(json_bytes(source)),
+        },
+        "coverageReport": {
+            "path": coverage_path.relative_to(repo_root).as_posix(),
+            "sha256": sha256_bytes(json_bytes(expected_coverage)),
+        },
+        "migrationSummary": expected_coverage["summary"],
+    })
+    return loaded, coverage
+
+
 def _source_age_days(last_modified: str, synced_at: str) -> float:
     return (_parse_datetime(synced_at) - _parse_datetime(last_modified)).total_seconds() / 86400
 
@@ -379,7 +786,16 @@ def _resolve_config_path(config: dict[str, Any], name: str, repo_root: Path) -> 
     value = config.get(name)
     if not isinstance(value, str) or not value:
         raise ReleaseError(f"config field {name} is required")
-    return (repo_root / value).resolve()
+    relative = Path(value)
+    if relative.is_absolute():
+        raise ReleaseError(f"config field {name} must be repository-relative")
+    root = repo_root.resolve()
+    resolved = (root / relative).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ReleaseError(f"config field {name} escapes the repository") from exc
+    return resolved
 
 
 def _parse_sources(values: list[str]) -> dict[str, Path]:
@@ -427,21 +843,23 @@ def _safe_output_name(value: Any, field: str) -> str:
 
 
 def _replace_output_directory(staged: Path, target: Path) -> None:
-    backup = target.with_name(f"{target.name}.previous")
-    if backup.exists():
-        shutil.rmtree(backup)
+    backup = target.with_name(f".{target.name}.{uuid4().hex}.previous")
+    original_moved = False
+    staged_installed = False
     try:
         if target.exists():
             target.replace(backup)
+            original_moved = True
         staged.replace(target)
+        staged_installed = True
     except OSError:
-        if target.exists():
+        if staged_installed and target.exists():
             shutil.rmtree(target)
-        if backup.exists():
+        if original_moved and backup.exists():
             backup.replace(target)
         raise
     finally:
-        if backup.exists():
+        if backup.exists() and target.exists():
             shutil.rmtree(backup)
 
 
@@ -483,8 +901,7 @@ def _build_release_into(
     if template["version"] != build:
         raise ReleaseError("config build does not match template version")
     builder = _load_builder(repo_root / "upstream" / "SCMDB_LANG" / "build_lang_template.py")
-    sidecar_path = _resolve_config_path(config, "uiSidecar", repo_root)
-    ui_sidecar = builder.load_ui_sidecar(str(sidecar_path))
+    ui_sidecar, ui_coverage = load_checked_ui_migration(config, template, repo_root)
     generated_artifacts = []
     validation_sources = []
     all_publishable = True
@@ -533,6 +950,7 @@ def _build_release_into(
                 "version": metadata.get("version"),
             },
             "upstreamCommit": upstream["upstreamCommit"],
+            "uiSidecar": ui_coverage,
             "builderStats": builder_stats,
             "publishedStats": published_stats,
             "gates": {"status": "passed" if publishable else "failed", "failures": failures},
@@ -583,6 +1001,7 @@ def _build_release_into(
         "schemaVersion": 1,
         "status": "passed" if all_publishable else "failed",
         "upstream": upstream,
+        "uiSidecar": ui_coverage,
         "sources": validation_sources,
         "artifacts": generated_artifacts,
         "aliases": aliases,

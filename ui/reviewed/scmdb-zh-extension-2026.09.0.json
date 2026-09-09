@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/RicardoLSW/scmdb-zh-extension",
+  "commit": "1a4c1b3469fed8d86b51329cfc9a759ed2b978e9",
+  "path": "src/extension/scmdb-ui/dictionary.ts",
+  "dictionaryVersion": "2026.09.0",
+  "issue": "KKPA-210",
+  "entries": [
+    {
+      "id": "navigation.back",
+      "sourceText": "Back",
+      "translation": "返回",
+      "context": "navigation",
+      "pageFamilies": ["missions", "fabricator", "resources", "solver", "delta"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "navigation.home",
+      "sourceText": "Home",
+      "translation": "首页",
+      "context": "navigation",
+      "pageFamilies": ["missions", "fabricator", "resources", "solver", "delta"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "search.label",
+      "sourceText": "Search",
+      "translation": "搜索",
+      "context": "search",
+      "pageFamilies": ["missions", "fabricator", "resources", "solver", "delta"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "search.placeholder",
+      "sourceText": "Search…",
+      "translation": "搜索…",
+      "context": "search",
+      "pageFamilies": ["fabricator", "resources"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "filter.label",
+      "sourceText": "Filter",
+      "translation": "筛选",
+      "context": "filter",
+      "pageFamilies": ["fabricator", "resources", "solver"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "filter.clear",
+      "sourceText": "Clear filters",
+      "translation": "清除筛选",
+      "context": "filter",
+      "pageFamilies": ["fabricator", "resources", "solver"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "view.grid",
+      "sourceText": "Grid view",
+      "translation": "网格视图",
+      "context": "view",
+      "pageFamilies": ["fabricator", "resources"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "view.list",
+      "sourceText": "List view",
+      "translation": "列表视图",
+      "context": "view",
+      "pageFamilies": ["fabricator", "resources"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "empty.no-results",
+      "sourceText": "No results",
+      "translation": "未找到结果",
+      "context": "empty-state",
+      "pageFamilies": ["missions", "fabricator", "resources", "solver", "delta"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "empty.adjust-filters",
+      "sourceText": "Try adjusting your filters.",
+      "translation": "请尝试调整筛选条件。",
+      "context": "empty-state",
+      "pageFamilies": ["fabricator", "resources", "solver"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "action.apply",
+      "sourceText": "Apply",
+      "translation": "应用",
+      "context": "action",
+      "pageFamilies": ["fabricator", "resources", "solver"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "action.reset",
+      "sourceText": "Reset",
+      "translation": "重置",
+      "context": "action",
+      "pageFamilies": ["fabricator", "resources", "solver"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "action.close",
+      "sourceText": "Close",
+      "translation": "关闭",
+      "context": "action",
+      "pageFamilies": ["missions", "fabricator", "resources", "solver", "delta"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "action.copy-link",
+      "sourceText": "Copy link",
+      "translation": "复制链接",
+      "context": "action",
+      "pageFamilies": ["missions", "fabricator", "resources", "solver", "delta"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "action.show-more",
+      "sourceText": "Show more",
+      "translation": "显示更多",
+      "context": "action",
+      "pageFamilies": ["fabricator", "resources"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    },
+    {
+      "id": "action.show-less",
+      "sourceText": "Show less",
+      "translation": "收起",
+      "context": "action",
+      "pageFamilies": ["fabricator", "resources"],
+      "status": "active",
+      "review": {"status": "approved", "reviewedBy": "KKPA-210 baseline review", "reviewedAt": "2026-09-08"}
+    }
+  ]
+}
