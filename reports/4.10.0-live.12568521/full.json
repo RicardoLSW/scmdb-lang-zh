@@ -1,14 +1,109 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "publishable_with_english_fallbacks",
   "variant": "full",
   "build": "4.10.0-live.12568521",
   "source": {
     "url": "https://ini.42kit.com/full/global.ini",
     "sha256": "aa3667b9cb82f17f3144b2e8c64f8fc3496b68ec054982bf642eb9744ac97394",
-    "lastModified": "Thu, 27 Aug 2026 06:06:49 GMT"
+    "lastModified": "Thu, 27 Aug 2026 06:06:49 GMT",
+    "version": "4.10.0-live.12568521"
   },
   "upstreamCommit": "4aa11dc2cdf7ba4a50ec0eb96ce2e819c71cd455",
+  "uiSidecar": {
+    "path": "ui/scmdb_ui_zh-CN.json",
+    "sha256": "811ade20280e84d552291ae88c0baa31517eef87aa03ca4bf1fa09eb29db3fa2",
+    "templateCount": 59,
+    "translatedCount": 0,
+    "englishFallbackCount": 59,
+    "translatedKeys": [],
+    "englishFallbackKeys": [
+      "scmdb_ui_fab_dismantle_blacklist_filter_exclude_tt",
+      "scmdb_ui_fab_dismantle_blacklist_filter_include_tt",
+      "scmdb_ui_fab_dismantle_blacklist_filter_off_tt",
+      "scmdb_ui_fab_dismantle_blacklist_material_tt",
+      "scmdb_ui_fab_preset_base",
+      "scmdb_ui_fab_preset_base_tt",
+      "scmdb_ui_fab_preset_max",
+      "scmdb_ui_fab_preset_max_tt",
+      "scmdb_ui_fab_preset_mid",
+      "scmdb_ui_fab_preset_mid_tt",
+      "scmdb_ui_fab_preset_min",
+      "scmdb_ui_fab_preset_min_tt",
+      "scmdb_ui_fab_product_stats",
+      "scmdb_ui_fab_quality_presets",
+      "scmdb_ui_fab_slider_free",
+      "scmdb_ui_fab_slider_mode",
+      "scmdb_ui_fab_slider_snap",
+      "scmdb_ui_fab_slider_snap_tt",
+      "scmdb_ui_stat_ammo_speed",
+      "scmdb_ui_stat_dps",
+      "scmdb_ui_stat_fire_rate",
+      "scmdb_ui_stat_mag_tt",
+      "scmdb_ui_stat_phys_dmg_per_shot",
+      "scmdb_ui_stat_range_suffix",
+      "scmdb_ui_stat_recoil_pitch",
+      "scmdb_ui_stat_recoil_smooth",
+      "scmdb_ui_stat_recoil_yaw",
+      "scmdb_ui_stat_spread",
+      "scmdb_ui_tag_ace",
+      "scmdb_ui_tag_ace_suppressed",
+      "scmdb_ui_tag_ace_suppressed_full",
+      "scmdb_ui_tag_ace_suppressed_tt",
+      "scmdb_ui_tag_ace_tt",
+      "scmdb_ui_tag_cargo_tt",
+      "scmdb_ui_tag_chain",
+      "scmdb_ui_tag_chain_member_tt",
+      "scmdb_ui_tag_chain_starter_tt",
+      "scmdb_ui_tag_event_inactive",
+      "scmdb_ui_tag_event_inactive_tt",
+      "scmdb_ui_tag_evt",
+      "scmdb_ui_tag_illegal",
+      "scmdb_ui_tag_legal",
+      "scmdb_ui_tag_max",
+      "scmdb_ui_tag_min",
+      "scmdb_ui_tag_multi",
+      "scmdb_ui_tag_multi_tt",
+      "scmdb_ui_tag_new",
+      "scmdb_ui_tag_new_tt",
+      "scmdb_ui_tag_prereq",
+      "scmdb_ui_tag_ship_friendly_tt",
+      "scmdb_ui_tag_ship_hostile_tt",
+      "scmdb_ui_tag_solo",
+      "scmdb_ui_tag_starter",
+      "scmdb_ui_tag_unique",
+      "scmdb_ui_tag_variants_tt",
+      "scmdb_ui_tag_waves_tt",
+      "scmdb_ui_tag_wip",
+      "scmdb_ui_unit_ms",
+      "scmdb_ui_unit_rpm"
+    ],
+    "generatedFrom": {
+      "repository": "https://github.com/RicardoLSW/scmdb-zh-extension",
+      "commit": "1a4c1b3469fed8d86b51329cfc9a759ed2b978e9",
+      "path": "src/extension/scmdb-ui/dictionary.ts",
+      "dictionaryVersion": "2026.09.0",
+      "issue": "KKPA-210"
+    },
+    "reviewedSource": {
+      "path": "ui/reviewed/scmdb-zh-extension-2026.09.0.json",
+      "sha256": "9b260d2cd2622909abb1a2a71849a9893f94bac1c59bf579585cebfe549fa4f9"
+    },
+    "coverageReport": {
+      "path": "reports/4.10.0-live.12568521/ui-sidecar-coverage.json",
+      "sha256": "515446e58de2b7b37c20f02a36b636efdbbcd3baa853c9c4c0cdf0e5a6df1610"
+    },
+    "migrationSummary": {
+      "templateUiKeys": 59,
+      "reviewedEntries": 16,
+      "migrated": 0,
+      "englishFallback": 59,
+      "sourceUnmatched": 16,
+      "fallbackReasons": {
+        "missing_exact_source": 59
+      }
+    }
+  },
   "builderStats": {
     "total": 4476,
     "translated": 2629,
@@ -615,7 +710,12 @@
       "mg_miles_capturegang_desc_006"
     ]
   },
+  "gates": {
+    "status": "passed",
+    "failures": []
+  },
   "artifact": {
+    "variant": "full",
     "path": "dist/4.10.0-live.12568521/lang-zh-CN-full.json",
     "sha256": "4fa35ac844009892a70c7fa1899941ce1cf1f6d70e03a81e7da663a9131e1ceb",
     "byteLength": 1694900

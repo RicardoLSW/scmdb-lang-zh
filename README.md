@@ -47,7 +47,9 @@ python tools/release.py build --config release/live.json --source full=/outside/
 
 `mismatchKeys` 中的 token 风险条目会强制回退英文。来源版本缺失或不匹配、来源过旧、缺失率异常、产物 schema/哈希/别名或 Raw CORS 校验失败时，命令返回非零并把候选标记为 `blocked`。报告只记录 key 名、计数、来源元数据和哈希，不记录外部 INI 的原文或本地路径。
 
-候选不会写入仓库的 `dist/`，也不会提交、推送或发布。人工审校通过后，才可显式复制候选并更新已跟踪产物。
+`release/live.json` 使用配置 schema v1；当前 build 输出的 variant 报告和 manifest 使用发布审计 schema v2，两者版本彼此独立。v2 报告必须包含来源版本、sidecar 覆盖、门禁和带 variant 的产物信息；v2 manifest 还包含稳定别名，以及由配置路径和 SHA-256 固定的 PTU blocked 报告索引。
+
+候选不会写入仓库的 `dist/`，也不会提交、推送或发布。人工审校通过后，才可显式复制候选并更新已跟踪产物。已跟踪 JSON 固定为 LF；`python -m unittest tests.test_release.ReleaseToolTests.test_checked_in_live_release_matches_current_output_contract` 可核对发布文件 schema、交叉引用、字节数和 SHA-256。
 
 SCMDB 可加载的稳定 Raw URL 是：
 

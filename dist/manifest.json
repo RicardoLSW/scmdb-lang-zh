@@ -1,8 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "upstreamCommit": "4aa11dc2cdf7ba4a50ec0eb96ce2e819c71cd455",
   "build": "4.10.0-live.12568521",
+  "channel": "live",
   "defaultVariant": "full",
+  "status": "candidate",
   "artifacts": [
     {
       "variant": "full",
@@ -23,10 +25,39 @@
       "byteLength": 1693812
     }
   ],
+  "aliases": [
+    {
+      "path": "dist/live.json",
+      "variant": "full",
+      "sha256": "4fa35ac844009892a70c7fa1899941ce1cf1f6d70e03a81e7da663a9131e1ceb",
+      "byteLength": 1694900
+    },
+    {
+      "path": "dist/live-full.json",
+      "variant": "full",
+      "sha256": "4fa35ac844009892a70c7fa1899941ce1cf1f6d70e03a81e7da663a9131e1ceb",
+      "byteLength": 1694900
+    },
+    {
+      "path": "dist/live-both.json",
+      "variant": "both",
+      "sha256": "c1e9d2b05bdbb4dd067f7295a94d71d5d29624893eaabcafba0986624dddb8ab",
+      "byteLength": 1708007
+    },
+    {
+      "path": "dist/live-half.json",
+      "variant": "half",
+      "sha256": "8414d9a174839c38f8f6505a845c24a3c3fe28d231d4b3d04f4812ed40c69a4a",
+      "byteLength": 1693812
+    }
+  ],
   "blocked": [
     {
       "variant": "ptu",
-      "report": "reports/ptu-4.10.1-ptu.12578875.json"
+      "build": "4.10.1-ptu.12578875",
+      "report": "reports/ptu-4.10.1-ptu.12578875.json",
+      "reportSchemaVersion": 1,
+      "sha256": "c1dc2d09db8e1818317c09c6f40b41de4c5e7915601642ae284c52233de6d0e3"
     }
   ]
 }

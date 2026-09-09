@@ -26,6 +26,11 @@ UPSTREAM_REPOSITORY = "https://github.com/KrovaxCode/SCMDB_LANG"
 TEMPLATE_RE = re.compile(r"^lang-template-(.+)\.json$")
 PINNED_FILES = {"UPSTREAM_README.md", "build_lang_template.py"}
 UI_PREFIX = "scmdb_ui_"
+WINDOWS_RESERVED_PATH_NAMES = {
+    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
 PROTECTED_TOKEN_RE = re.compile(
     r"\\u003c/?EM[0-9]*\\u003e|</?EM[0-9]*>|\[[^\[\]\r\n]+\]|"
     r"\{[^{}\r\n]+\}|%(?:[A-Za-z_][A-Za-z0-9_.:-]*|[0-9]+)%|"
@@ -51,15 +56,24 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _load_json_bytes(raw: bytes, source: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(
+            raw.decode("utf-8-sig"), object_pairs_hook=_reject_duplicate_keys
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ReleaseError(f"cannot read JSON {source}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ReleaseError(f"JSON root must be an object: {source}")
+    return data
+
+
 def load_json(path: Path) -> dict[str, Any]:
     try:
-        with path.open(encoding="utf-8-sig", newline="") as handle:
-            data = json.load(handle, object_pairs_hook=_reject_duplicate_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raw = path.read_bytes()
+    except OSError as exc:
         raise ReleaseError(f"cannot read JSON {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ReleaseError(f"JSON root must be an object: {path}")
-    return data
+    return _load_json_bytes(raw, path)
 
 
 def json_bytes(data: Any) -> bytes:
@@ -798,6 +812,72 @@ def _resolve_config_path(config: dict[str, Any], name: str, repo_root: Path) -> 
     return resolved
 
 
+def load_blocked_releases(config: dict[str, Any], repo_root: Path) -> list[dict[str, Any]]:
+    entries = config.get("blocked", [])
+    if not isinstance(entries, list):
+        raise ReleaseError("config blocked must be an array")
+    active_variants = config.get("variants", {})
+    if not isinstance(active_variants, dict):
+        raise ReleaseError("config variants must be an object")
+    root = repo_root.resolve()
+    loaded = []
+    seen_variants = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ReleaseError("blocked release entry must be an object")
+        variant = entry.get("variant")
+        report_name = entry.get("report")
+        expected_hash = entry.get("sha256")
+        if not isinstance(variant, str) or not variant:
+            raise ReleaseError("blocked release variant is required")
+        if variant in active_variants or variant in seen_variants:
+            raise ReleaseError(f"duplicate or active blocked variant: {variant}")
+        seen_variants.add(variant)
+        if not isinstance(report_name, str) or not report_name:
+            raise ReleaseError(f"blocked report path is required: {variant}")
+        parts = report_name.split("/")
+        if (
+            "\\" in report_name
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", report_name)
+            or not parts
+            or parts[0] != "reports"
+            or any(not part or part in (".", "..") or part.endswith(".") for part in parts)
+            or any(
+                part.split(".", 1)[0].upper() in WINDOWS_RESERVED_PATH_NAMES
+                for part in parts
+            )
+        ):
+            raise ReleaseError(f"blocked report must use a canonical POSIX path: {variant}")
+        relative = Path(*parts)
+        report_path = (root / relative).resolve()
+        try:
+            report_path.relative_to(root / "reports")
+        except ValueError as exc:
+            raise ReleaseError(f"blocked report escapes reports/: {variant}") from exc
+        try:
+            raw = report_path.read_bytes()
+        except OSError as exc:
+            raise ReleaseError(f"cannot read blocked report {variant}: {exc}") from exc
+        info = {"byteLength": len(raw), "sha256": sha256_bytes(raw)}
+        if expected_hash != info["sha256"]:
+            raise ReleaseError(f"blocked report SHA-256 mismatch: {variant}")
+        report = _load_json_bytes(raw, report_path)
+        if report.get("status") != "blocked" or report.get("variant") != variant:
+            raise ReleaseError(f"blocked report identity mismatch: {variant}")
+        schema_version = report.get("schemaVersion")
+        build = report.get("requestedBuild", report.get("build"))
+        if not isinstance(schema_version, int) or not isinstance(build, str) or not build:
+            raise ReleaseError(f"blocked report schema/build metadata is invalid: {variant}")
+        loaded.append({
+            "variant": variant,
+            "build": build,
+            "report": relative.as_posix(),
+            "reportSchemaVersion": schema_version,
+            "sha256": info["sha256"],
+        })
+    return loaded
+
+
 def _parse_sources(values: list[str]) -> dict[str, Path]:
     parsed = {}
     for value in values:
@@ -878,6 +958,7 @@ def _build_release_into(
     variants = config.get("variants")
     source_metadata = config.get("sources")
     policy = config.get("policy", {})
+    blocked_releases = load_blocked_releases(config, repo_root)
     if not isinstance(build, str) or not isinstance(channel, str):
         raise ReleaseError("config build and channel are required")
     if not isinstance(variants, dict) or not isinstance(source_metadata, dict):
@@ -995,6 +1076,7 @@ def _build_release_into(
         "status": "candidate" if all_publishable else "blocked",
         "artifacts": generated_artifacts,
         "aliases": aliases,
+        "blocked": blocked_releases,
     }
     write_json(dist_root / "manifest.json", manifest)
     validation = {
@@ -1005,6 +1087,7 @@ def _build_release_into(
         "sources": validation_sources,
         "artifacts": generated_artifacts,
         "aliases": aliases,
+        "blocked": blocked_releases,
         "rawCors": raw_checks,
     }
     write_json(reports_root / "validation.json", validation)
