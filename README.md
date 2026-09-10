@@ -55,11 +55,32 @@ SCMDB 可加载的稳定 Raw URL 是：
 
 ```text
 https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live.json
+https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-full.json
 https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-both.json
 https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/main/dist/live-half.json
 ```
 
-`live.json` 为默认全汉化版；`live-both.json` 为双语版；`live-half.json` 保持物品名、地名英文。PTU 稳定 URL 尚未发布。
+`live.json` 与 `live-full.json` 都是全汉化版；`live-both.json` 为双语版；`live-half.json` 保持物品名、地名英文。PTU 稳定 URL 尚未发布。
+
+版本化 URL 固定到发布 commit `1748646cb4cb25e2d8578dfb628541e74143028b` 与当前 LIVE build，适合复现和回滚：
+
+```text
+https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/1748646cb4cb25e2d8578dfb628541e74143028b/dist/4.10.0-live.12568521/lang-zh-CN-full.json
+https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/1748646cb4cb25e2d8578dfb628541e74143028b/dist/4.10.0-live.12568521/lang-zh-CN-both.json
+https://raw.githubusercontent.com/RicardoLSW/scmdb-lang-zh/1748646cb4cb25e2d8578dfb628541e74143028b/dist/4.10.0-live.12568521/lang-zh-CN-half.json
+```
+
+commit-SHA Raw URL 不随分支推进而变化；严格归档还应记录 `dist/manifest.json` 中的 SHA-256。
+
+## 安装、升级、回滚与清除
+
+1. 在 SCMDB 自带的 Community Translation 设置中手动粘贴所需 URL；本仓库和配套扩展都不会替用户写入地址。
+2. 日常使用选择稳定 URL；人工审校发布新 LIVE 产物后，稳定入口才会更新。升级后重新加载页面并核对 SCMDB 当前 build。
+3. 需要回滚时，手动换成上一份已验证的版本化 URL；恢复跟随更新时再换回稳定 URL。
+4. 清除时使用 SCMDB 自带的 Clear/Disable translation 控件，然后重新加载页面。清除扩展本地 `global.ini` 与清除 SCMDB 原生语言 URL 是两项独立操作。
+5. LIVE 文件用于 PTU 时存在频道/build 风险。当前 PTU 因来源陈旧、缺失 1,042 个 keyed 条目而明确未发布，不存在可用的 `ptu*.json` URL。
+
+SCMDB 消费端对未知或失配语言文件的具体加载行为由 SCMDB 自身负责；配套扩展只诊断风险并停用自身重复 DOM 写入，不会替换、修复或删除用户 URL。
 
 ## 同步与差异分析
 
